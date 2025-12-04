@@ -33,6 +33,7 @@ import { IEditorService, SIDE_GROUP, ACTIVE_GROUP } from '../../../services/edit
 import { Range, IRange } from '../../../../editor/common/core/range.js';
 import { ThrottledDelayer } from '../../../../base/common/async.js';
 import { top } from '../../../../base/common/arrays.js';
+import { format } from '../../../../base/common/strings.js';
 import { FileQueryCacheState } from '../common/cacheState.js';
 import { IHistoryService } from '../../../services/history/common/history.js';
 import { IResourceEditorInput, ITextEditorOptions } from '../../../../platform/editor/common/editor.js';
@@ -53,10 +54,13 @@ import { stripIcons } from '../../../../base/common/iconLabels.js';
 import { Lazy } from '../../../../base/common/lazy.js';
 import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
+import { defaultToggleStyles } from '../../../../platform/theme/browser/defaultStyles.js';
+import { Toggle } from '../../../../base/browser/ui/toggle/toggle.js';
 import { ASK_QUICK_QUESTION_ACTION_ID } from '../../chat/browser/actions/chatQuickInputActions.js';
 import { IQuickChatService } from '../../chat/browser/chat.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
 import { ICustomEditorLabelService } from '../../../services/editor/common/customEditorLabelService.js';
+import * as Constants from '../common/constants.js';
 
 interface IAnythingQuickPickItem extends IPickerQuickAccessItem, IQuickPickItemWithResource { }
 
@@ -86,10 +90,31 @@ interface IAnythingPickState extends IDisposable {
 
 	isQuickNavigating: boolean | undefined;
 
+	useExcludesAndIgnoreFiles: boolean;
+
 	/**
 	 * Sets the picker for this pick state.
 	 */
 	set(picker: IQuickPick<IAnythingQuickPickItem, { useSeparators: true }>): void;
+}
+
+export class UseExcludesAndIgnoreFilesToggle extends Toggle {
+	constructor(opts: { title: string; isChecked: boolean }) {
+		super({
+			icon: Codicon.exclude,
+			...opts,
+			...defaultToggleStyles
+		});
+	}
+
+	/**
+	 * Toggles the checked state and fires the onChange event.
+	 */
+	public toggle(): void {
+		this.checked = !this.checked;
+		this._onChange.fire(false);
+	}
+
 }
 
 
@@ -162,6 +187,8 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 
 			isQuickNavigating: boolean | undefined = undefined;
 
+			useExcludesAndIgnoreFiles: boolean = true;
+
 			constructor(
 				private readonly provider: AnythingQuickAccessProvider,
 				instantiationService: IInstantiationService
@@ -194,6 +221,7 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 				this.lastRange = undefined;
 				this.lastGlobalPicks = undefined;
 				this.editorViewState.reset();
+				this.useExcludesAndIgnoreFiles = true;
 			}
 		}(this, instantiationService));
 
@@ -222,6 +250,30 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 
 		// Update the pick state for this run
 		this.pickState.set(picker);
+
+		// Configure exclude/ignore files toggle button with keybinding in title
+		const excludeToggleKeybinding = this.keybindingService.lookupKeybinding(Constants.SearchCommandIds.ToggleQuickAccessExcludesAndIgnoreFiles);
+		let excludeToggleTitle = localize('useExcludesAndIgnoreFilesDescription', "Use Exclude Settings and Ignore Files");
+		if (excludeToggleKeybinding && excludeToggleKeybinding.getLabel()) {
+			excludeToggleTitle = format('{0} ({1})', excludeToggleTitle, excludeToggleKeybinding.getLabel());
+		}
+
+		// Create exclude/ignore files toggle widget
+		const excludeToggle = disposables.add(new UseExcludesAndIgnoreFilesToggle({
+			title: excludeToggleTitle,
+			isChecked: this.pickState.useExcludesAndIgnoreFiles
+		}));
+
+		// Add the toggle to the quick pick - the toggle will render in the input box
+		picker.toggles = [excludeToggle];
+
+		// Handle exclude toggle state changes
+		disposables.add(excludeToggle.onChange(_ => {
+			this.pickState.useExcludesAndIgnoreFiles = excludeToggle.checked;
+
+			// Reload the picker to reflect the change
+			picker.reload();
+		}));
 
 		// Add editor decorations for active editor symbol picks
 		const editorDecorationsDisposable = disposables.add(new MutableDisposable());
@@ -713,14 +765,18 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 	}
 
 	private getFileQueryOptions(input: { filePattern?: string; cacheKey?: string; maxResults?: number }): IFileQueryBuilderOptions {
-		return {
+		const disregardExclude = !this.pickState.useExcludesAndIgnoreFiles || undefined;
+		const options = {
 			_reason: 'openFileHandler', // used for telemetry - do not change
 			extraFileResources: this.instantiationService.invokeFunction(getOutOfWorkspaceEditorResources),
 			filePattern: input.filePattern || '',
-			cacheKey: input.cacheKey,
+			cacheKey: 'useExcludesAndIgnoreFiles:' + this.pickState.useExcludesAndIgnoreFiles + ':' + input.cacheKey,
 			maxResults: input.maxResults || 0,
-			sortByScore: true
+			sortByScore: true,
+			disregardIgnoreFiles: disregardExclude,
+			disregardExcludeSettings: disregardExclude
 		};
+		return options;
 	}
 
 	private async getAbsolutePathFileResult(query: IPreparedQuery, token: CancellationToken): Promise<URI | undefined> {
