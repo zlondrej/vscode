@@ -61,6 +61,7 @@ import { IQuickChatService } from '../../chat/browser/chat.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
 import { ICustomEditorLabelService } from '../../../services/editor/common/customEditorLabelService.js';
 import * as Constants from '../common/constants.js';
+import { IQuickAccessExcludesState } from './quickAccessExcludesState.js';
 
 interface IAnythingQuickPickItem extends IPickerQuickAccessItem, IQuickPickItemWithResource { }
 
@@ -132,8 +133,6 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 
 	private readonly pickState: IAnythingPickState;
 
-	private useExcludesAndIgnoreFiles: boolean = true;
-
 	get defaultFilterValue(): DefaultQuickAccessFilterValue | undefined {
 		if (this.configuration.preserveInput) {
 			return DefaultQuickAccessFilterValue.LAST;
@@ -163,7 +162,8 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 		@IKeybindingService private readonly keybindingService: IKeybindingService,
 		@IQuickChatService private readonly quickChatService: IQuickChatService,
 		@ILogService private readonly logService: ILogService,
-		@ICustomEditorLabelService private readonly customEditorLabelService: ICustomEditorLabelService
+		@ICustomEditorLabelService private readonly customEditorLabelService: ICustomEditorLabelService,
+		@IQuickAccessExcludesState private readonly quickAccessExcludesState: IQuickAccessExcludesState
 	) {
 		super(AnythingQuickAccessProvider.PREFIX, {
 			canAcceptInBackground: true,
@@ -222,7 +222,6 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 			}
 		}(this, instantiationService));
 
-		this.useExcludesAndIgnoreFiles = true;
 		this.fileQueryBuilder = this.instantiationService.createInstance(QueryBuilder);
 		this.workspaceSymbolsQuickAccess = this._register(instantiationService.createInstance(SymbolsQuickAccessProvider));
 		this.editorSymbolsQuickAccess = this.instantiationService.createInstance(GotoSymbolQuickAccessProvider);
@@ -244,7 +243,11 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 	}
 
 	override provide(picker: IQuickPick<IAnythingQuickPickItem, { useSeparators: true }>, token: CancellationToken, runOptions?: AnythingQuickAccessProviderRunOptions): IDisposable {
+		console.log('AnythingQuickAccessProvider#provide', picker);
 		const disposables = new DisposableStore();
+
+		// Notify the shared state that quick input is opening
+		this.quickAccessExcludesState.setPicker(picker);
 
 		// Update the pick state for this run
 		this.pickState.set(picker);
@@ -258,12 +261,12 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 			: localizedExcludeToggleTitle;
 
 		// Always open the quick access with excludes and ignore files enabled
-		this.useExcludesAndIgnoreFiles = true;
+		// this.quickAccessExcludesState.useExcludesAndIgnoreFiles = true;
 
 		// Create exclude/ignore files toggle widget
 		const excludeToggle = disposables.add(new UseExcludesAndIgnoreFilesToggle({
 			title: excludeToggleTitle,
-			isChecked: this.useExcludesAndIgnoreFiles
+			isChecked: this.quickAccessExcludesState.useExcludesAndIgnoreFiles
 		}));
 
 		// Add the toggle to the quick pick - the toggle will render in the input box
@@ -271,7 +274,7 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 
 		// Handle exclude toggle state changes
 		disposables.add(excludeToggle.onChange(_ => {
-			this.useExcludesAndIgnoreFiles = excludeToggle.checked;
+			this.quickAccessExcludesState.useExcludesAndIgnoreFiles = excludeToggle.checked;
 
 			// Reload the picker to reflect the change
 			picker.reload();
@@ -299,6 +302,7 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 			if (reason === QuickInputHideReason.Gesture) {
 				this.pickState.editorViewState.restore();
 			}
+			console.log('AnythingQuickAccessProvider#provide.onDidHide', picker, reason);
 		}));
 
 		// Start picker
@@ -767,12 +771,12 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 	}
 
 	private getFileQueryOptions(input: { filePattern?: string; cacheKey?: string; maxResults?: number }): IFileQueryBuilderOptions {
-		const disregardExclude = !this.useExcludesAndIgnoreFiles || undefined;
+		const disregardExclude = !this.quickAccessExcludesState.useExcludesAndIgnoreFiles || undefined;
 		const options = {
 			_reason: 'openFileHandler', // used for telemetry - do not change
 			extraFileResources: this.instantiationService.invokeFunction(getOutOfWorkspaceEditorResources),
 			filePattern: input.filePattern || '',
-			cacheKey: 'useExcludesAndIgnoreFiles:' + this.useExcludesAndIgnoreFiles + ':' + input.cacheKey,
+			cacheKey: 'useExcludesAndIgnoreFiles:' + this.quickAccessExcludesState.useExcludesAndIgnoreFiles + ':' + input.cacheKey,
 			maxResults: input.maxResults || 0,
 			sortByScore: true,
 			disregardIgnoreFiles: disregardExclude,

@@ -39,6 +39,7 @@ import { IMatch } from '../../../../../base/common/filters.js';
 import { format } from '../../../../../base/common/strings.js';
 import { UseExcludesAndIgnoreFilesToggle } from '../anythingQuickAccess.js';
 import * as Constants from '../../common/constants.js';
+import { IQuickAccessExcludesState } from '../quickAccessExcludesState.js';
 
 export const TEXT_SEARCH_QUICK_ACCESS_PREFIX = '%';
 
@@ -67,7 +68,6 @@ export class TextSearchQuickAccess extends PickerQuickAccessProvider<ITextSearch
 		messages: []
 	});
 	private readonly editorViewState: PickerEditorState;
-	private useExcludesAndIgnoreFiles: boolean = true;
 
 	private _getTextQueryBuilderOptions(charsPerLine: number): ITextQueryBuilderOptions {
 		return {
@@ -76,8 +76,8 @@ export class TextSearchQuickAccess extends PickerQuickAccessProvider<ITextSearch
 				extraFileResources: this._instantiationService.invokeFunction(getOutOfWorkspaceEditorResources),
 				maxResults: this.configuration.maxResults ?? undefined,
 				isSmartCase: this.configuration.smartCase,
-				disregardExcludeSettings: !this.useExcludesAndIgnoreFiles,
-				disregardIgnoreFiles: !this.useExcludesAndIgnoreFiles,
+				disregardExcludeSettings: !this._quickAccessExcludesState.useExcludesAndIgnoreFiles,
+				disregardIgnoreFiles: !this._quickAccessExcludesState.useExcludesAndIgnoreFiles,
 			},
 
 			previewOptions: {
@@ -95,6 +95,7 @@ export class TextSearchQuickAccess extends PickerQuickAccessProvider<ITextSearch
 		@IViewsService private readonly _viewsService: IViewsService,
 		@IConfigurationService private readonly _configurationService: IConfigurationService,
 		@IKeybindingService private readonly _keybindingService: IKeybindingService,
+		@IQuickAccessExcludesState private readonly _quickAccessExcludesState: IQuickAccessExcludesState,
 	) {
 		super(TEXT_SEARCH_QUICK_ACCESS_PREFIX, { canAcceptInBackground: true, shouldSkipTrimPickFilter: true });
 
@@ -111,6 +112,7 @@ export class TextSearchQuickAccess extends PickerQuickAccessProvider<ITextSearch
 	}
 
 	override provide(picker: IQuickPick<ITextSearchQuickAccessItem, { useSeparators: true }>, token: CancellationToken, runOptions?: IQuickAccessProviderRunOptions): IDisposable {
+		console.log('TextSearchQuickAccess#provide', picker);
 		const disposables = new DisposableStore();
 		if (TEXT_SEARCH_QUICK_ACCESS_PREFIX.length < picker.value.length) {
 			picker.valueSelection = [TEXT_SEARCH_QUICK_ACCESS_PREFIX.length, picker.value.length];
@@ -121,6 +123,9 @@ export class TextSearchQuickAccess extends PickerQuickAccessProvider<ITextSearch
 			tooltip: localize('goToSearch', "Open in Search View")
 		}];
 		this.editorViewState.reset();
+
+		this._quickAccessExcludesState.setPicker(picker);
+
 		disposables.add(picker.onDidTriggerButton(async () => {
 			await this.moveToSearchViewlet(undefined);
 			picker.hide();
@@ -134,13 +139,10 @@ export class TextSearchQuickAccess extends PickerQuickAccessProvider<ITextSearch
 			? format('{0} ({1})', localizedExcludeToggleTitle, excludeToggleKeybinding)
 			: localizedExcludeToggleTitle;
 
-		// Always open the quick access with excludes and ignore files enabled
-		this.useExcludesAndIgnoreFiles = true;
-
 		// Create exclude/ignore files toggle widget
 		const excludeToggle = disposables.add(new UseExcludesAndIgnoreFilesToggle({
 			title: excludeToggleTitle,
-			isChecked: this.useExcludesAndIgnoreFiles
+			isChecked: this._quickAccessExcludesState.useExcludesAndIgnoreFiles
 		}));
 
 		// Add the toggle to the quick pick - the toggle will render in the input box
@@ -148,7 +150,7 @@ export class TextSearchQuickAccess extends PickerQuickAccessProvider<ITextSearch
 
 		// Handle exclude toggle state changes
 		disposables.add(excludeToggle.onChange(_ => {
-			this.useExcludesAndIgnoreFiles = excludeToggle.checked;
+			this._quickAccessExcludesState.useExcludesAndIgnoreFiles = excludeToggle.checked;
 
 			// Reload the picker to reflect the change
 			picker.reload();
@@ -183,6 +185,8 @@ export class TextSearchQuickAccess extends PickerQuickAccessProvider<ITextSearch
 
 		disposables.add(Event.once(picker.onDidHide)(({ reason }) => {
 			this.searchModel.searchResult.toggleHighlights(false);
+			// this._quickAccessExcludesState.onQuickInputClosed();
+			console.log('TextSearchQuickAccess#provide.onDidHide', picker, reason);
 		}));
 
 		disposables.add(super.provide(picker, token, runOptions));

@@ -45,9 +45,11 @@ import './searchActionsTopBar.js';
 import { TEXT_SEARCH_QUICK_ACCESS_PREFIX, TextSearchQuickAccess } from './quickTextSearch/textSearchQuickAccess.js';
 import { Extensions, IConfigurationMigrationRegistry } from '../../../common/configuration.js';
 import { registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
+import { IQuickAccessExcludesState, QuickAccessExcludesState } from './quickAccessExcludesState.js';
 
 registerSingleton(ISearchViewModelWorkbenchService, SearchViewModelWorkbenchService, InstantiationType.Delayed);
 registerSingleton(ISearchHistoryService, SearchHistoryService, InstantiationType.Delayed);
+registerSingleton(IQuickAccessExcludesState, QuickAccessExcludesState, InstantiationType.Delayed);
 
 replaceContributions();
 notebookSearchContributions();
