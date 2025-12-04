@@ -133,6 +133,8 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 
 	private readonly pickState: IAnythingPickState;
 
+	private useExcludesAndIgnoreFiles: boolean = true;
+
 	get defaultFilterValue(): DefaultQuickAccessFilterValue | undefined {
 		if (this.configuration.preserveInput) {
 			return DefaultQuickAccessFilterValue.LAST;
@@ -222,6 +224,7 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 			}
 		}(this, instantiationService));
 
+		this.useExcludesAndIgnoreFiles = true;
 		this.fileQueryBuilder = this.instantiationService.createInstance(QueryBuilder);
 		this.workspaceSymbolsQuickAccess = this._register(instantiationService.createInstance(SymbolsQuickAccessProvider));
 		this.editorSymbolsQuickAccess = this.instantiationService.createInstance(GotoSymbolQuickAccessProvider);
@@ -259,9 +262,6 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 		const excludeToggleTitle = excludeToggleKeybinding
 			? format('{0} ({1})', localizedExcludeToggleTitle, excludeToggleKeybinding)
 			: localizedExcludeToggleTitle;
-
-		// Always open the quick access with excludes and ignore files enabled
-		// this.quickAccessExcludesState.useExcludesAndIgnoreFiles = true;
 
 		// Create exclude/ignore files toggle widget
 		const excludeToggle = disposables.add(new UseExcludesAndIgnoreFilesToggle({
