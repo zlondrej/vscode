@@ -90,8 +90,6 @@ interface IAnythingPickState extends IDisposable {
 
 	isQuickNavigating: boolean | undefined;
 
-	useExcludesAndIgnoreFiles: boolean;
-
 	/**
 	 * Sets the picker for this pick state.
 	 */
@@ -133,6 +131,8 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 	private static SYMBOL_PICKS_MERGE_DELAY = 200; // allow some time to merge fast and slow picks to reduce flickering
 
 	private readonly pickState: IAnythingPickState;
+
+	private useExcludesAndIgnoreFiles: boolean = true;
 
 	get defaultFilterValue(): DefaultQuickAccessFilterValue | undefined {
 		if (this.configuration.preserveInput) {
@@ -187,8 +187,6 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 
 			isQuickNavigating: boolean | undefined = undefined;
 
-			useExcludesAndIgnoreFiles: boolean = true;
-
 			constructor(
 				private readonly provider: AnythingQuickAccessProvider,
 				instantiationService: IInstantiationService
@@ -221,10 +219,10 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 				this.lastRange = undefined;
 				this.lastGlobalPicks = undefined;
 				this.editorViewState.reset();
-				this.useExcludesAndIgnoreFiles = true;
 			}
 		}(this, instantiationService));
 
+		this.useExcludesAndIgnoreFiles = true;
 		this.fileQueryBuilder = this.instantiationService.createInstance(QueryBuilder);
 		this.workspaceSymbolsQuickAccess = this._register(instantiationService.createInstance(SymbolsQuickAccessProvider));
 		this.editorSymbolsQuickAccess = this.instantiationService.createInstance(GotoSymbolQuickAccessProvider);
@@ -252,16 +250,20 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 		this.pickState.set(picker);
 
 		// Configure exclude/ignore files toggle button with keybinding in title
-		const excludeToggleKeybinding = this.keybindingService.lookupKeybinding(Constants.SearchCommandIds.ToggleQuickAccessExcludesAndIgnoreFiles);
-		let excludeToggleTitle = localize('useExcludesAndIgnoreFilesDescription', "Use Exclude Settings and Ignore Files");
-		if (excludeToggleKeybinding && excludeToggleKeybinding.getLabel()) {
-			excludeToggleTitle = format('{0} ({1})', excludeToggleTitle, excludeToggleKeybinding.getLabel());
-		}
+		const excludeToggleKeybinding = this.keybindingService
+			.lookupKeybinding(Constants.SearchCommandIds.ToggleQuickAccessExcludesAndIgnoreFiles)?.getLabel();
+		const localizedExcludeToggleTitle = localize('useExcludesAndIgnoreFilesDescription', "Use Exclude Settings and Ignore Files");
+		const excludeToggleTitle = excludeToggleKeybinding
+			? format('{0} ({1})', localizedExcludeToggleTitle, excludeToggleKeybinding)
+			: localizedExcludeToggleTitle;
+
+		// Always open the quick access with excludes and ignore files enabled
+		this.useExcludesAndIgnoreFiles = true;
 
 		// Create exclude/ignore files toggle widget
 		const excludeToggle = disposables.add(new UseExcludesAndIgnoreFilesToggle({
 			title: excludeToggleTitle,
-			isChecked: this.pickState.useExcludesAndIgnoreFiles
+			isChecked: this.useExcludesAndIgnoreFiles
 		}));
 
 		// Add the toggle to the quick pick - the toggle will render in the input box
@@ -269,7 +271,7 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 
 		// Handle exclude toggle state changes
 		disposables.add(excludeToggle.onChange(_ => {
-			this.pickState.useExcludesAndIgnoreFiles = excludeToggle.checked;
+			this.useExcludesAndIgnoreFiles = excludeToggle.checked;
 
 			// Reload the picker to reflect the change
 			picker.reload();
@@ -765,12 +767,12 @@ export class AnythingQuickAccessProvider extends PickerQuickAccessProvider<IAnyt
 	}
 
 	private getFileQueryOptions(input: { filePattern?: string; cacheKey?: string; maxResults?: number }): IFileQueryBuilderOptions {
-		const disregardExclude = !this.pickState.useExcludesAndIgnoreFiles || undefined;
+		const disregardExclude = !this.useExcludesAndIgnoreFiles || undefined;
 		const options = {
 			_reason: 'openFileHandler', // used for telemetry - do not change
 			extraFileResources: this.instantiationService.invokeFunction(getOutOfWorkspaceEditorResources),
 			filePattern: input.filePattern || '',
-			cacheKey: 'useExcludesAndIgnoreFiles:' + this.pickState.useExcludesAndIgnoreFiles + ':' + input.cacheKey,
+			cacheKey: 'useExcludesAndIgnoreFiles:' + this.useExcludesAndIgnoreFiles + ':' + input.cacheKey,
 			maxResults: input.maxResults || 0,
 			sortByScore: true,
 			disregardIgnoreFiles: disregardExclude,

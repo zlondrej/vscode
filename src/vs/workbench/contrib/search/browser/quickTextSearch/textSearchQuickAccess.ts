@@ -28,6 +28,7 @@ import { IPatternInfo, ISearchComplete, ITextQuery, VIEW_ID } from '../../../../
 import { Event } from '../../../../../base/common/event.js';
 import { PickerEditorState } from '../../../../browser/quickaccess.js';
 import { IViewsService } from '../../../../services/views/common/viewsService.js';
+import { IKeybindingService } from '../../../../../platform/keybinding/common/keybinding.js';
 import { Sequencer } from '../../../../../base/common/async.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { Codicon } from '../../../../../base/common/codicons.js';
@@ -35,6 +36,9 @@ import { SearchModelImpl } from '../searchTreeModel/searchModel.js';
 import { SearchModelLocation, RenderableMatch, ISearchTreeFileMatch, ISearchTreeMatch, ISearchResult } from '../searchTreeModel/searchTreeCommon.js';
 import { searchComparer } from '../searchCompare.js';
 import { IMatch } from '../../../../../base/common/filters.js';
+import { format } from '../../../../../base/common/strings.js';
+import { UseExcludesAndIgnoreFilesToggle } from '../anythingQuickAccess.js';
+import * as Constants from '../../common/constants.js';
 
 export const TEXT_SEARCH_QUICK_ACCESS_PREFIX = '%';
 
@@ -63,6 +67,7 @@ export class TextSearchQuickAccess extends PickerQuickAccessProvider<ITextSearch
 		messages: []
 	});
 	private readonly editorViewState: PickerEditorState;
+	private useExcludesAndIgnoreFiles: boolean = true;
 
 	private _getTextQueryBuilderOptions(charsPerLine: number): ITextQueryBuilderOptions {
 		return {
@@ -71,6 +76,8 @@ export class TextSearchQuickAccess extends PickerQuickAccessProvider<ITextSearch
 				extraFileResources: this._instantiationService.invokeFunction(getOutOfWorkspaceEditorResources),
 				maxResults: this.configuration.maxResults ?? undefined,
 				isSmartCase: this.configuration.smartCase,
+				disregardExcludeSettings: !this.useExcludesAndIgnoreFiles,
+				disregardIgnoreFiles: !this.useExcludesAndIgnoreFiles,
 			},
 
 			previewOptions: {
@@ -86,7 +93,8 @@ export class TextSearchQuickAccess extends PickerQuickAccessProvider<ITextSearch
 		@IEditorService private readonly _editorService: IEditorService,
 		@ILabelService private readonly _labelService: ILabelService,
 		@IViewsService private readonly _viewsService: IViewsService,
-		@IConfigurationService private readonly _configurationService: IConfigurationService
+		@IConfigurationService private readonly _configurationService: IConfigurationService,
+		@IKeybindingService private readonly _keybindingService: IKeybindingService,
 	) {
 		super(TEXT_SEARCH_QUICK_ACCESS_PREFIX, { canAcceptInBackground: true, shouldSkipTrimPickFilter: true });
 
@@ -116,6 +124,34 @@ export class TextSearchQuickAccess extends PickerQuickAccessProvider<ITextSearch
 		disposables.add(picker.onDidTriggerButton(async () => {
 			await this.moveToSearchViewlet(undefined);
 			picker.hide();
+		}));
+
+		// Configure exclude/ignore files toggle button with keybinding in title
+		const excludeToggleKeybinding = this._keybindingService
+			.lookupKeybinding(Constants.SearchCommandIds.ToggleQuickAccessExcludesAndIgnoreFiles)?.getLabel();
+		const localizedExcludeToggleTitle = localize('useExcludesAndIgnoreFilesDescription', "Use Exclude Settings and Ignore Files");
+		const excludeToggleTitle = excludeToggleKeybinding
+			? format('{0} ({1})', localizedExcludeToggleTitle, excludeToggleKeybinding)
+			: localizedExcludeToggleTitle;
+
+		// Always open the quick access with excludes and ignore files enabled
+		this.useExcludesAndIgnoreFiles = true;
+
+		// Create exclude/ignore files toggle widget
+		const excludeToggle = disposables.add(new UseExcludesAndIgnoreFilesToggle({
+			title: excludeToggleTitle,
+			isChecked: this.useExcludesAndIgnoreFiles
+		}));
+
+		// Add the toggle to the quick pick - the toggle will render in the input box
+		picker.toggles = [excludeToggle];
+
+		// Handle exclude toggle state changes
+		disposables.add(excludeToggle.onChange(_ => {
+			this.useExcludesAndIgnoreFiles = excludeToggle.checked;
+
+			// Reload the picker to reflect the change
+			picker.reload();
 		}));
 
 		const onDidChangeActive = () => {
