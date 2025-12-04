@@ -34,13 +34,14 @@ import { getWorkspaceSymbols, IWorkspaceSymbol } from '../common/search.js';
 import * as Constants from '../common/constants.js';
 import { SearchChatContextContribution } from './searchChatContext.js';
 
+import './searchActionsAnything.js';
 import './searchActionsCopy.js';
 import './searchActionsFind.js';
 import './searchActionsNav.js';
 import './searchActionsRemoveReplace.js';
 import './searchActionsSymbol.js';
-import './searchActionsTopBar.js';
 import './searchActionsTextQuickAccess.js';
+import './searchActionsTopBar.js';
 import { TEXT_SEARCH_QUICK_ACCESS_PREFIX, TextSearchQuickAccess } from './quickTextSearch/textSearchQuickAccess.js';
 import { Extensions, IConfigurationMigrationRegistry } from '../../../common/configuration.js';
 import { registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
